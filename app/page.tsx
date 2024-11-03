@@ -1,101 +1,112 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+import { useCallback, useEffect, useState } from "react";
+import {User} from 'stream-chat';
+import { LoadingIndicator } from "stream-chat-react";
+import { useClerk } from '@clerk/nextjs';
+import MyChat from "@/components/MyChat";
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+type HomeState = {
+  apiKey: string,
+  user: User,
+  token: string
+};
+
+export default function Home(){
+  const  [homeState,setHomeState] = useState<HomeState | undefined>();
+
+  const { user: clerkUser } = useClerk();
+
+  const registerUser = useCallback(
+    async function registerUser() {
+      // register user on Stream backend
+      console.log('[registerUser] myUser:', clerkUser);
+      const userId = clerkUser?.id;
+      const mail = clerkUser?.primaryEmailAddress?.emailAddress;
+      if (userId && mail) {
+        const streamResponse = await fetch('/api/register-user', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: userId,
+            email: mail,
+          }),
+        });
+        const responseBody = await streamResponse.json();
+        console.log('[registerUser] Stream response:', responseBody);
+        return responseBody;
+      }
+    },
+    [clerkUser]
   );
+  async function getUserToken(userId: string, userName: string) {
+    const response = await fetch('/api/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId: userId,
+      }),
+    });
+    const responseBody = await response.json();
+    const token = responseBody.token;
+
+    if (!token) {
+      console.error("Couldn't retrieve token.");
+      return;
+    }
+
+    const user: User = {
+      id: userId,
+      name: userName,
+      image: `https://getstream.io/random_png/?id=${userId}&name=${userName}`,
+    };
+    const apiKey = process.env.NEXT_PUBLIC_STREAM_API_KEY;
+    if(apiKey){
+      setHomeState({
+      apiKey: apiKey,
+      user: user,
+      token: token,
+    });}
+   
+  }
+  useEffect(() => {
+    if (
+      clerkUser?.id &&
+      clerkUser?.primaryEmailAddress?.emailAddress &&
+      !clerkUser?.publicMetadata.streamRegistered
+    ) {
+      console.log('[Page - useEffect] Registering user on Stream backend');
+      registerUser().then((result) => {
+        console.log('[Page - useEffect] Result: ', result);
+        getUserToken(
+          clerkUser.id,
+          clerkUser?.primaryEmailAddress?.emailAddress || 'Unknown'
+        );
+      });
+    } else {
+      // take user and get token
+      if (clerkUser?.id) {
+        console.log(
+          '[Page - useEffect] User already registered on Stream backend: ',
+          clerkUser?.id
+        );
+        getUserToken(
+          clerkUser?.id || 'Unknown',
+          clerkUser?.primaryEmailAddress?.emailAddress || 'Unknown'
+        );
+      }
+    }
+  }, [registerUser, clerkUser]);
+
+
+  if(!homeState){
+    return <LoadingIndicator/>
+
+  }
+
+  return <MyChat{...homeState}/>;
 }
